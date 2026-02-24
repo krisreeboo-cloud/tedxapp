@@ -7,7 +7,7 @@
   <title>NIGS — Your Ticket</title>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&display=swap"
     rel="stylesheet">
   <style>
@@ -413,11 +413,6 @@
   </div>
 
   <script>
-    // ─── EMBEDDED DATABASE ───
-    // ─── SUPABASE CONFIG ───
-    const SUPABASE_URL = 'https://pxfhpdydjkbhdlkdobmk.supabase.co';       // e.g. https://xyzproject.supabase.co
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4ZmhwZHlkamtiaGRsa2RvYm1rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4NDE5OTgsImV4cCI6MjA4NzQxNzk5OH0.KVPKCeojEZKuQyoheiOKBQlYtSFqCIX76hwn7chH2Qk'; // Your publishable/anon key
-    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // ─── CONFIG ───
     const ALLOWED_DOMAIN = 'goa.bits-pilani.ac.in';
@@ -495,43 +490,23 @@
       if (tokenResponse.error) { showError('Login failed: ' + tokenResponse.error); return; }
       showLoading();
       try {
-        const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: 'Bearer ' + tokenResponse.access_token }
+        // Send Google token to our secure backend (Netlify Function)
+        const res = await fetch('/.netlify/functions/get-ticket', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ googleAccessToken: tokenResponse.access_token }),
         });
-        const info = await res.json();
-        processLogin(info.email, info.name);
-      } catch (e) {
-        showError('Could not fetch user info. Try again.');
-        showLoginScreen();
-      }
-    }
 
-    async function processLogin(email, googleName) {
-      email = (email || '').toLowerCase().trim();
+        const result = await res.json();
 
-      // Domain check
-      if (!email.endsWith('@' + ALLOWED_DOMAIN)) {
-        showError(`Only @${ALLOWED_DOMAIN} emails are allowed.`);
-        showLoginScreen();
-        return;
-      }
-
-      // Supabase lookup
-      try {
-        const { data: record, error } = await supabaseClient
-          .from('students')
-          .select('*')
-          .eq('email', email)
-          .single();
-
-        if (error || !record) {
-          // User is valid BITS student but not in purchase DB
-          currentUser = { email, name: googleName, id: null, tc: '', sapphire: '', theme: '', combo1: '', combo2: '' };
-          renderTicket(currentUser);
+        if (!res.ok) {
+          showError(result.error || 'Login failed. Please try again.');
+          showLoginScreen();
           return;
         }
 
-        currentUser = { email, ...record };
+        // Backend verified the token and returned the student record
+        currentUser = result.user;
         renderTicket(currentUser);
       } catch (e) {
         showError('Could not fetch ticket data. Please try again.');
